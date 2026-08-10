@@ -1,0 +1,392 @@
+﻿<Window x:Class="PlayGo.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:PlayGo.App.Controls"
+        Title="PlayGo — the game of Go"
+        Height="780" Width="1180" MinHeight="560" MinWidth="940"
+        Background="#14171F"
+        WindowStartupLocation="CenterScreen"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True">
+    <Window.Resources>
+        <SolidColorBrush x:Key="AppBg" Color="#14171F"/>
+        <SolidColorBrush x:Key="PanelBg" Color="#1D2230"/>
+        <SolidColorBrush x:Key="PanelBg2" Color="#232A3C"/>
+        <SolidColorBrush x:Key="PanelBorder" Color="#2E3650"/>
+        <SolidColorBrush x:Key="TextPrimary" Color="#E9ECF4"/>
+        <SolidColorBrush x:Key="TextDim" Color="#9AA4BC"/>
+        <SolidColorBrush x:Key="Accent" Color="#F5C542"/>
+        <SolidColorBrush x:Key="AccentDark" Color="#C79A2E"/>
+
+        <RadialGradientBrush x:Key="BlackStoneBrush" GradientOrigin="0.35,0.3" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
+            <GradientStop Offset="0" Color="#6F6F72"/>
+            <GradientStop Offset="0.15" Color="#56565A"/>
+            <GradientStop Offset="1" Color="#08080A"/>
+        </RadialGradientBrush>
+        <RadialGradientBrush x:Key="WhiteStoneBrush" GradientOrigin="0.35,0.3" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
+            <GradientStop Offset="0" Color="#FFFFFF"/>
+            <GradientStop Offset="0.15" Color="#F2F2F2"/>
+            <GradientStop Offset="1" Color="#C2C2C2"/>
+        </RadialGradientBrush>
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBg}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="14"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <Style x:Key="CardTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource PanelBg2}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#2E3750"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#39435F"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+            <Setter Property="Background" Value="#3A2E12"/>
+            <Setter Property="BorderBrush" Value="#6B5426"/>
+            <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </Window.Resources>
+
+
+    <DockPanel Background="{StaticResource AppBg}">
+        <!-- Menu -->
+        <Menu DockPanel.Dock="Top" Background="#10131B" Foreground="{StaticResource TextPrimary}" Padding="4,3">
+            <Menu.Resources>
+                <!-- The default WPF theme hard-codes a light-gray sub-menu background (#F0F0F0) in its
+                     MenuItem template, so the app's light menu text is invisible on any light-themed
+                     Windows. Retemplate MenuItem and Separator to use the app's dark palette instead. -->
+                <Style TargetType="MenuItem">
+                    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="Padding" Value="10,6"/>
+                    <Setter Property="FontSize" Value="13"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="MenuItem">
+                                <Border x:Name="templateRoot" Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        SnapsToDevicePixels="True">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" MinWidth="22" SharedSizeGroup="MenuItemIconColumnGroup"/>
+                                            <ColumnDefinition Width="13"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="30"/>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="MenuItemIGTColumnGroup"/>
+                                            <ColumnDefinition Width="20"/>
+                                        </Grid.ColumnDefinitions>
+                                        <ContentPresenter x:Name="Icon" ContentSource="Icon" Width="16" Height="16" Margin="3"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                        <Border x:Name="GlyphPanel" Grid.ColumnSpan="2" Background="{StaticResource PanelBg2}"
+                                                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="3"
+                                                Width="18" Height="18" Margin="2,0,0,0" HorizontalAlignment="Center"
+                                                VerticalAlignment="Center" Visibility="Hidden">
+                                            <Path x:Name="Glyph" Data="F1M10,1.2L4.7,9.1 4.5,9.1 0,5.2 1.3,3.5 4.3,6.1 8.3,0 10,1.2z"
+                                                  Fill="{StaticResource Accent}" Width="8" Height="10" FlowDirection="LeftToRight"/>
+                                        </Border>
+                                        <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                                          Margin="{TemplateBinding Padding}" Grid.Column="2"
+                                                          HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                          SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                        <TextBlock Text="{TemplateBinding InputGestureText}" Margin="{TemplateBinding Padding}"
+                                                   Grid.Column="4" VerticalAlignment="Center" Opacity="0.6"/>
+                                        <Path x:Name="RightArrow" Data="M0,0L4,3.5 0,7z" Fill="{StaticResource TextDim}"
+                                              Grid.Column="5" Margin="10,0,0,0" HorizontalAlignment="Left"
+                                              VerticalAlignment="Center" Visibility="Collapsed"/>
+                                        <Popup x:Name="PART_Popup" Placement="Right" HorizontalOffset="-2" VerticalOffset="-3"
+                                               IsOpen="{TemplateBinding IsSubmenuOpen}" AllowsTransparency="True"
+                                               Focusable="False"
+                                               PopupAnimation="{DynamicResource {x:Static SystemParameters.MenuPopupAnimationKey}}">
+                                            <Border x:Name="SubMenuBorder" Background="{StaticResource PanelBg}"
+                                                    BorderBrush="{StaticResource PanelBorder}" BorderThickness="1"
+                                                    CornerRadius="6" Padding="3">
+                                                <ScrollViewer x:Name="SubMenuScrollViewer">
+                                                    <Grid RenderOptions.ClearTypeHint="Enabled">
+                                                        <Canvas Width="0" Height="0" HorizontalAlignment="Left" VerticalAlignment="Top">
+                                                            <Rectangle x:Name="OpaqueRect"
+                                                                       Fill="{Binding Background, ElementName=SubMenuBorder}"
+                                                                       Width="{Binding ActualWidth, ElementName=SubMenuBorder}"
+                                                                       Height="{Binding ActualHeight, ElementName=SubMenuBorder}"/>
+                                                        </Canvas>
+                                                        <ItemsPresenter x:Name="ItemsPresenter" KeyboardNavigation.DirectionalNavigation="Cycle"
+                                                                        KeyboardNavigation.TabNavigation="Cycle" Grid.IsSharedSizeScope="True"/>
+                                                    </Grid>
+                                                </ScrollViewer>
+                                            </Border>
+                                        </Popup>
+                                    </Grid>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="Role" Value="TopLevelHeader">
+                                        <Setter TargetName="PART_Popup" Property="Placement" Value="Bottom"/>
+                                        <Setter TargetName="PART_Popup" Property="HorizontalOffset" Value="-4"/>
+                                        <Setter TargetName="PART_Popup" Property="VerticalOffset" Value="0"/>
+                                        <Setter Property="Padding" Value="10,4"/>
+                                    </Trigger>
+                                    <Trigger Property="Role" Value="TopLevelItem">
+                                        <Setter Property="Padding" Value="10,4"/>
+                                    </Trigger>
+                                    <Trigger Property="Role" Value="SubmenuHeader">
+                                        <Setter TargetName="RightArrow" Property="Visibility" Value="Visible"/>
+                                    </Trigger>
+                                    <Trigger Property="Icon" Value="{x:Null}">
+                                        <Setter TargetName="Icon" Property="Visibility" Value="Collapsed"/>
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="GlyphPanel" Property="Visibility" Value="Visible"/>
+                                        <Setter TargetName="Icon" Property="Visibility" Value="Collapsed"/>
+                                    </Trigger>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="templateRoot" Property="Background" Value="{StaticResource PanelBorder}"/>
+                                        <Setter TargetName="templateRoot" Property="BorderBrush" Value="#33F5C542"/>
+                                        <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                                    </Trigger>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Foreground" Value="#5A6178"/>
+                                        <Setter TargetName="Glyph" Property="Fill" Value="#5A6178"/>
+                                        <Setter TargetName="RightArrow" Property="Fill" Value="#5A6178"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+                <Style TargetType="Separator">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Separator">
+                                <Border Height="1" Background="{StaticResource PanelBorder}" Margin="28,3,6,3"/>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Menu.Resources>
+            <MenuItem Header="_Game">
+                <MenuItem Header="_New Game…" Click="NewGame_Click" InputGestureText="Ctrl+N"/>
+                <Separator/>
+                <MenuItem Header="_Pass" Click="Pass_Click" InputGestureText="P"/>
+                <MenuItem Header="_Undo" Click="Undo_Click" InputGestureText="Ctrl+Z"/>
+                <Separator/>
+                <MenuItem Header="Re_sign" Click="Resign_Click"/>
+                <Separator/>
+                <MenuItem Header="E_xit" Click="Exit_Click" InputGestureText="Alt+F4"/>
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem Header="Show _Coordinates" x:Name="ShowCoordsItem" IsCheckable="True" IsChecked="True"
+                          Click="ToggleCoordinates_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_How to play Go" Click="HowToPlay_Click"/>
+                <MenuItem Header="_About PlayGo" Click="About_Click"/>
+            </MenuItem>
+        </Menu>
+
+        <!-- Status bar -->
+        <Border DockPanel.Dock="Bottom" Background="#10131B" Padding="12,6">
+            <TextBlock x:Name="StatusText" Foreground="{StaticResource TextDim}" FontSize="12.5"
+                       TextTrimming="CharacterEllipsis"/>
+        </Border>
+
+        <Grid Margin="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Board -->
+            <Border Grid.Column="0" Background="#1A1F2B" BorderBrush="{StaticResource PanelBorder}"
+                    BorderThickness="1" CornerRadius="12" Margin="0,0,12,0">
+                <controls:GoBoardControl x:Name="BoardControl" Margin="10"
+                                         MoveRequested="OnBoardMoveRequested"
+                                         StoneMarked="OnBoardStoneMarked"/>
+            </Border>
+
+            <!-- Side panel -->
+            <StackPanel Grid.Column="1" Width="300" VerticalAlignment="Top">
+                <!-- Turn indicator -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource CardTitle}" Text="CURRENT PLAYER"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="TurnStone" Width="26" Height="26" Margin="0,0,10,0"
+                                     VerticalAlignment="Center" Fill="{StaticResource BlackStoneBrush}"
+                                     Stroke="#000000" StrokeThickness="1"/>
+                            <TextBlock x:Name="TurnLabel" FontSize="17" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock x:Name="TurnSubLabel" FontSize="12" Foreground="{StaticResource TextDim}"
+                                   Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Prisoners -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource CardTitle}" Text="PRISONERS"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <Ellipse Grid.Row="0" Grid.Column="0" Width="14" Height="14" Margin="0,2,8,2"
+                                     Fill="{StaticResource BlackStoneBrush}" Stroke="#000" StrokeThickness="0.8"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="BlackPrisonersLabel"
+                                       Foreground="{StaticResource TextPrimary}" FontSize="13"/>
+                            <Ellipse Grid.Row="1" Grid.Column="0" Width="14" Height="14" Margin="0,2,8,2"
+                                     Fill="{StaticResource WhiteStoneBrush}" Stroke="#999" StrokeThickness="0.8"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="WhitePrisonersLabel"
+                                       Foreground="{StaticResource TextPrimary}" FontSize="13"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Game controls -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource CardTitle}" Text="GAME CONTROLS"/>
+                        <WrapPanel>
+                            <Button x:Name="PassButton" Style="{StaticResource ActionButton}" Content="Pass"
+                                    Click="Pass_Click"/>
+                            <Button x:Name="UndoButton" Style="{StaticResource ActionButton}" Content="Undo"
+                                    Click="Undo_Click"/>
+                            <Button x:Name="ResignButton" Style="{StaticResource ActionButton}" Content="Resign"
+                                    Click="Resign_Click"/>
+                        </WrapPanel>
+                        <Button Style="{StaticResource PrimaryButton}" Content="New Game…" Margin="0,10,0,0"
+                                Click="NewGame_Click"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Move history -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource CardTitle}" Text="MOVE HISTORY"/>
+                        <ScrollViewer MaxHeight="190" VerticalScrollBarVisibility="Auto">
+                            <ListBox x:Name="MoveList" Background="Transparent" BorderThickness="0"
+                                     Foreground="{StaticResource TextPrimary}" FontSize="12.5"
+                                     FontFamily="Consolas" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Padding" Value="4,2"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                            </ListBox>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+
+
+                <!-- Scoring panel (shown after two passes) -->
+                <Border x:Name="ScoringPanel" Style="{StaticResource Card}" Visibility="Collapsed"
+                        BorderBrush="{StaticResource AccentDark}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource CardTitle}" Foreground="{StaticResource Accent}"
+                                   Text="SCORING — both players passed"/>
+                        <TextBlock Foreground="{StaticResource TextDim}" FontSize="12" TextWrapping="Wrap"
+                                   Margin="0,0,0,10"
+                                   Text="Click any stones that are dead to mark them with a red ?, then count the score."/>
+                        <WrapPanel>
+                            <Button Style="{StaticResource PrimaryButton}" Content="Count Score"
+                                    Click="CountScore_Click"/>
+                            <Button x:Name="ResumeButton" Style="{StaticResource ActionButton}" Content="Resume Play"
+                                    Click="ResumePlay_Click"/>
+                            <Button x:Name="ClearMarksButton" Style="{StaticResource ActionButton}" Content="Clear Marks"
+                                    Click="ClearMarks_Click"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Result panel (shown when the game ends) -->
+                <Border x:Name="ResultPanel" Style="{StaticResource Card}" Visibility="Collapsed"
+                        BorderBrush="{StaticResource AccentDark}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource CardTitle}" Foreground="{StaticResource Accent}"
+                                   Text="GAME OVER"/>
+                        <TextBlock x:Name="WinnerLabel" FontSize="18" FontWeight="Bold"
+                                   Foreground="{StaticResource Accent}" Margin="0,0,0,10"/>
+                        <Grid TextElement.FontSize="13">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Black territory" Foreground="{StaticResource TextDim}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="BlackTerritoryLabel" Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Black stones" Foreground="{StaticResource TextDim}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="BlackStonesLabel" Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="White territory" Foreground="{StaticResource TextDim}"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" x:Name="WhiteTerritoryLabel" Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="White stones" Foreground="{StaticResource TextDim}"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" x:Name="WhiteStonesLabel" Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Komi" Foreground="{StaticResource TextDim}"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" x:Name="KomiLabel" Foreground="{StaticResource TextPrimary}"/>
+                        </Grid>
+                        <Separator Margin="0,10" Background="{StaticResource PanelBorder}"/>
+                        <Grid TextElement.FontSize="14" TextElement.FontWeight="SemiBold">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Total" Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Grid.Column="1" x:Name="TotalLabel" Foreground="{StaticResource TextPrimary}"/>
+                        </Grid>
+                        <Button Style="{StaticResource PrimaryButton}" Content="Play Again…" Margin="0,12,0,0"
+                                Click="NewGame_Click"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</Window>
+
