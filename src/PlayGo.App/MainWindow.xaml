@@ -4,93 +4,17 @@
         xmlns:controls="clr-namespace:PlayGo.App.Controls"
         Title="PlayGo — the game of Go"
         Height="780" Width="1180" MinHeight="560" MinWidth="940"
-        Background="#14171F"
+        Background="{StaticResource AppBg}"
         WindowStartupLocation="CenterScreen"
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True">
-    <Window.Resources>
-        <SolidColorBrush x:Key="AppBg" Color="#14171F"/>
-        <SolidColorBrush x:Key="PanelBg" Color="#1D2230"/>
-        <SolidColorBrush x:Key="PanelBg2" Color="#232A3C"/>
-        <SolidColorBrush x:Key="PanelBorder" Color="#2E3650"/>
-        <SolidColorBrush x:Key="TextPrimary" Color="#E9ECF4"/>
-        <SolidColorBrush x:Key="TextDim" Color="#9AA4BC"/>
-        <SolidColorBrush x:Key="Accent" Color="#F5C542"/>
-        <SolidColorBrush x:Key="AccentDark" Color="#C79A2E"/>
-
-        <RadialGradientBrush x:Key="BlackStoneBrush" GradientOrigin="0.35,0.3" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
-            <GradientStop Offset="0" Color="#6F6F72"/>
-            <GradientStop Offset="0.15" Color="#56565A"/>
-            <GradientStop Offset="1" Color="#08080A"/>
-        </RadialGradientBrush>
-        <RadialGradientBrush x:Key="WhiteStoneBrush" GradientOrigin="0.35,0.3" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
-            <GradientStop Offset="0" Color="#FFFFFF"/>
-            <GradientStop Offset="0.15" Color="#F2F2F2"/>
-            <GradientStop Offset="1" Color="#C2C2C2"/>
-        </RadialGradientBrush>
-
-        <Style x:Key="Card" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource PanelBg}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Padding" Value="14"/>
-            <Setter Property="Margin" Value="0,0,0,10"/>
-        </Style>
-
-        <Style x:Key="CardTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
-            <Setter Property="Margin" Value="0,0,0,8"/>
-        </Style>
-
-        <Style x:Key="ActionButton" TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource PanelBg2}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="Margin" Value="0,0,8,0"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="7" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="#2E3750"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="#39435F"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="bd" Property="Opacity" Value="0.4"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
-            <Setter Property="Background" Value="#3A2E12"/>
-            <Setter Property="BorderBrush" Value="#6B5426"/>
-            <Setter Property="Foreground" Value="{StaticResource Accent}"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-        </Style>
-    </Window.Resources>
-
+    <!-- Shared palette, button templates and control styles live in Styles.xaml,
+         merged through App.xaml. The menu retemplate below is local to this window. -->
 
     <DockPanel Background="{StaticResource AppBg}">
         <!-- Menu -->
-        <Menu DockPanel.Dock="Top" Background="#10131B" Foreground="{StaticResource TextPrimary}" Padding="4,3">
+        <Menu DockPanel.Dock="Top" Background="{StaticResource ChromeBg}"
+              Foreground="{StaticResource TextPrimary}" Padding="4,3">
             <Menu.Resources>
                 <!-- The default WPF theme hard-codes a light-gray sub-menu background (#F0F0F0) in its
                      MenuItem template, so the app's light menu text is invisible on any light-themed
@@ -226,7 +150,7 @@
         </Menu>
 
         <!-- Status bar -->
-        <Border DockPanel.Dock="Bottom" Background="#10131B" Padding="12,6">
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource ChromeBg}" Padding="12,6">
             <TextBlock x:Name="StatusText" Foreground="{StaticResource TextDim}" FontSize="12.5"
                        TextTrimming="CharacterEllipsis"/>
         </Border>
@@ -238,7 +162,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- Board -->
-            <Border Grid.Column="0" Background="#1A1F2B" BorderBrush="{StaticResource PanelBorder}"
+            <Border Grid.Column="0" Background="{StaticResource BoardFrameBg}" BorderBrush="{StaticResource PanelBorder}"
                     BorderThickness="1" CornerRadius="12" Margin="0,0,12,0">
                 <controls:GoBoardControl x:Name="BoardControl" Margin="10"
                                          MoveRequested="OnBoardMoveRequested"
@@ -312,7 +236,8 @@
                         <ScrollViewer MaxHeight="190" VerticalScrollBarVisibility="Auto">
                             <ListBox x:Name="MoveList" Background="Transparent" BorderThickness="0"
                                      Foreground="{StaticResource TextPrimary}" FontSize="12.5"
-                                     FontFamily="Consolas" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                     FontFamily="Consolas" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     SelectionChanged="MoveList_SelectionChanged">
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
                                         <Setter Property="Padding" Value="4,2"/>
@@ -321,6 +246,29 @@
                                 </ListBox.ItemContainerStyle>
                             </ListBox>
                         </ScrollViewer>
+
+                        <!-- Step back through the game. Selecting a move shows that
+                             position on the board; Esc or Live returns to the present. -->
+                        <Grid x:Name="ReviewBar" Margin="0,8,0,0" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="ReviewPrevButton" Grid.Column="0" Style="{StaticResource SmallButton}"
+                                    Content="◀" ToolTip="Previous move"
+                                    Click="ReviewPrev_Click"/>
+                            <Button x:Name="ReviewNextButton" Grid.Column="1" Style="{StaticResource SmallButton}"
+                                    Content="▶" ToolTip="Next move"
+                                    Click="ReviewNext_Click"/>
+                            <Button x:Name="ReviewLiveButton" Grid.Column="2" Style="{StaticResource SmallButton}"
+                                    Content="Live" ToolTip="Return to the current position (Esc)"
+                                    Click="ReviewLive_Click"/>
+                            <TextBlock x:Name="ReviewLabel" Grid.Column="3" FontSize="11.5"
+                                       Foreground="{StaticResource TextDim}" HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
                     </StackPanel>
                 </Border>
 
@@ -333,7 +281,43 @@
                                    Text="SCORING — both players passed"/>
                         <TextBlock Foreground="{StaticResource TextDim}" FontSize="12" TextWrapping="Wrap"
                                    Margin="0,0,0,10"
-                                   Text="Click any stones that are dead to mark them with a red ?, then count the score."/>
+                                   Text="Click any dead stone to mark it — the whole group is marked at once. Shaded points show the territory each side encloses."/>
+
+                        <!-- Running estimate, recomputed as stones are marked. -->
+                        <Border x:Name="EstimateBox" Background="{StaticResource PanelBg2}" CornerRadius="6"
+                                Padding="10" Margin="0,0,0,10" Visibility="Collapsed">
+                            <Grid TextElement.FontSize="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition/><RowDefinition/><RowDefinition/>
+                                    <RowDefinition/><RowDefinition/>
+                                </Grid.RowDefinitions>
+                                <Ellipse Grid.Row="0" Grid.Column="0" Width="11" Height="11" Margin="0,3,7,3"
+                                         Fill="{StaticResource BlackStoneBrush}" Stroke="#000" StrokeThickness="0.8"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="EstBlackLabel"
+                                           Foreground="{StaticResource TextPrimary}"/>
+                                <Ellipse Grid.Row="1" Grid.Column="0" Width="11" Height="11" Margin="0,3,7,3"
+                                         Fill="{StaticResource WhiteStoneBrush}" Stroke="#999" StrokeThickness="0.8"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="EstWhiteLabel"
+                                           Foreground="{StaticResource TextPrimary}"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Dead" Margin="0,0,7,0"
+                                           Foreground="{StaticResource TextDim}"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="EstDeadLabel"
+                                           Foreground="{StaticResource TextDim}"/>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Score" Margin="0,0,7,0"
+                                           Foreground="{StaticResource TextDim}"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="EstScoreLabel"
+                                           Foreground="{StaticResource TextPrimary}"/>
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Lead" Margin="0,0,7,0"
+                                           Foreground="{StaticResource TextDim}" FontWeight="SemiBold"/>
+                                <TextBlock Grid.Row="4" Grid.Column="1" x:Name="EstMarginLabel"
+                                           Foreground="{StaticResource Accent}" FontWeight="SemiBold"/>
+                            </Grid>
+                        </Border>
+
                         <WrapPanel>
                             <Button Style="{StaticResource PrimaryButton}" Content="Count Score"
                                     Click="CountScore_Click"/>

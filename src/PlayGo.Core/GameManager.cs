@@ -36,12 +36,20 @@ public sealed class GameManager
     private StoneColor? _winner;
     private int _moveNumber;
 
-    public GameManager(int size = 19, PlayerType blackPlayer = PlayerType.Human, PlayerType whitePlayer = PlayerType.Human)
+    public GameManager(
+        int size = 19,
+        PlayerType blackPlayer = PlayerType.Human,
+        PlayerType whitePlayer = PlayerType.Human,
+        double? komi = null,
+        int handicap = 0)
     {
         BoardSize = size;
         Board = new GoBoard(size);
         BlackPlayer = blackPlayer;
         WhitePlayer = whitePlayer;
+        Komi = komi ?? DefaultKomi(size);
+        Handicap = Math.Clamp(handicap, 0, MaxHandicap);
+        if (Handicap > 0) ApplyHandicap(Handicap);
         _positionCounts[Board.PositionHash()] = 1;
     }
 
@@ -49,7 +57,38 @@ public sealed class GameManager
 
     public int BoardSize { get; private set; }
 
-    public double Komi { get; set; } = 7.5;
+    public double Komi { get; set; }
+
+    /// <summary>Number of black handicap stones placed before the game began.</summary>
+    public int Handicap { get; private set; }
+
+    public const int MaxHandicap = 9;
+
+    /// <summary>
+    /// The usual compensation for moving second. It grows with the board because
+    /// the value of the first move is larger on a bigger board.
+    /// </summary>
+    public static double DefaultKomi(int boardSize) => boardSize switch
+    {
+        9 => 5.5,
+        13 => 6.5,
+        _ => 7.5,
+    };
+
+    /// <summary>
+    /// Handicap stones in the traditional order: the four corners first, then the
+    /// side star points, then tengen.
+    /// </summary>
+    public static (int Row, int Col)[] HandicapPoints(int size, int count)
+    {
+        var order = size switch
+        {
+            9 => HandicapOrder9,
+            13 => HandicapOrder13,
+            _ => HandicapOrder19,
+        };
+        return order.Take(Math.Clamp(count, 0, MaxHandicap)).ToArray();
+    }
 
     public PlayerType BlackPlayer { get; set; }
 
@@ -75,8 +114,8 @@ public sealed class GameManager
 
     public bool IsComputerTurn =>
         _state == GameState.Playing &&
-        _currentPlayer == StoneColor.Black ? BlackPlayer == PlayerType.Computer
-                                           : WhitePlayer == PlayerType.Computer;
+        (_currentPlayer == StoneColor.Black ? BlackPlayer == PlayerType.Computer
+                                            : WhitePlayer == PlayerType.Computer);
 
     public PlayerType GetPlayer(StoneColor color) =>
         color == StoneColor.Black ? BlackPlayer : WhitePlayer;
@@ -178,20 +217,33 @@ public sealed class GameManager
 
     /// <summary>
     /// Undoes the most recent move. Against a computer opponent it continues
-    /// undoing until it is a human's turn again.
+    /// undoing until it is a human's turn again. Works from the scoring phase
+    /// too, which steps back into play.
     /// </summary>
     public bool Undo()
     {
-        if (_state == GameState.Scoring) return false;
+        if (_state == GameState.Finished && _undoStack.Count == 0) return false;
         if (_history.Count == 0) return false;
+
+        var colorBefore = _currentPlayer;
 
         // Undo the last move.
         RestoreLastSnapshot();
 
-        // Keep undoing while the player who would now move is a computer.
-        while (IsComputerTurn && _history.Count > 0)
+        if (BlackPlayer == PlayerType.Computer && WhitePlayer == PlayerType.Computer)
         {
-            RestoreLastSnapshot();
+            // There is no human to hand the turn back to, so step back a whole
+            // turn pair and leave the same colour on move.
+            while (_history.Count > 0 && _currentPlayer != colorBefore)
+                RestoreLastSnapshot();
+        }
+        else
+        {
+            // Keep undoing while the player who would now move is a computer.
+            while (IsComputerTurn && _history.Count > 0)
+            {
+                RestoreLastSnapshot();
+            }
         }
 
         RaiseBoard();
@@ -199,14 +251,26 @@ public sealed class GameManager
         return true;
     }
 
+    /// <summary>
+    /// Marks or unmarks a stone as dead during scoring. Dead stones live and die
+    /// as a group, so the whole connected group toggles together — clicking any
+    /// stone in a group marks all of it in one go.
+    /// </summary>
     public void ToggleDeadStone(GoPoint p)
     {
         if (_state != GameState.Scoring) return;
         if (!Board.InBounds(p.Row, p.Col)) return;
         if (Board[p.Row, p.Col] == StoneColor.Empty) return;
 
-        if (!_deadStones.Remove(p))
-            _deadStones.Add(p);
+        var (group, _) = Board.GetGroupInfo(p.Row, p.Col);
+
+        // If any stone of the group is already marked, clear the whole group.
+        bool unmark = group.Any(g => _deadStones.Contains(g));
+        foreach (var g in group)
+        {
+            if (unmark) _deadStones.Remove(g);
+            else _deadStones.Add(g);
+        }
         RaiseBoard();
     }
 
@@ -240,20 +304,22 @@ public sealed class GameManager
         RaiseStatus();
     }
 
-    public void NewGame(int size, PlayerType black, PlayerType white, double komi = 7.5)
+    public void NewGame(int size, PlayerType black, PlayerType white, double? komi = null, int handicap = 0)
     {
         Board = new GoBoard(size);
         BoardSize = size;
-        Komi = komi;
+        Komi = komi ?? DefaultKomi(size);
         BlackPlayer = black;
         WhitePlayer = white;
+        Handicap = Math.Clamp(handicap, 0, MaxHandicap);
         _history.Clear();
         _undoStack.Clear();
         _deadStones = new HashSet<GoPoint>();
         _positionCounts.Clear();
+        if (Handicap > 0) ApplyHandicap(Handicap);
         _positionCounts[Board.PositionHash()] = 1;
         _consecutivePasses = 0;
-        _currentPlayer = StoneColor.Black;
+        _currentPlayer = Handicap > 0 ? StoneColor.White : StoneColor.Black;
         _winner = null;
         _state = GameState.Playing;
         _moveNumber = 0;
@@ -261,8 +327,73 @@ public sealed class GameManager
         RaiseStatus();
     }
 
+    /// <summary>
+    /// Rebuilds the position after <paramref name="index"/> recorded moves (0-based).
+    /// Pass -1 for the starting position. Handicap stones are included: they are
+    /// placed before the first move and never appear in the move history.
+    /// </summary>
+    public GoBoard GetBoardAt(int index)
+    {
+        var rebuilt = new GoBoard(BoardSize);
+        foreach (var (row, col) in HandicapPoints(BoardSize, Handicap))
+            rebuilt.ApplyMove(row, col, StoneColor.Black);
+
+        int limit = Math.Min(index, _history.Count - 1);
+        for (int i = 0; i <= limit; i++)
+        {
+            var move = _history[i];
+            if (move.Kind == MoveKind.Play && move.Point is GoPoint p)
+                rebuilt.ApplyMove(p.Row, p.Col, move.Color);
+        }
+        return rebuilt;
+    }
+
+    /// <summary>
+    /// Builds an immutable legality predicate for the current position. The
+    /// returned delegate captures its own copy of everything it reads, so it is
+    /// safe to call from a background thread while the game keeps running.
+    /// </summary>
+    public Func<int, int, bool> CreateLegalityFilter()
+    {
+        var snapshot = Board.Clone();
+        var color = _currentPlayer;
+        var forbidden = new HashSet<string>(_positionCounts.Keys);
+        string? koHash = _history.Count >= 2 ? _history[^2].BoardPositionHash : null;
+
+        return (row, col) =>
+        {
+            if (snapshot[row, col] != StoneColor.Empty) return false;
+            var scratch = snapshot.Clone();
+            if (!scratch.ApplyMove(row, col, color).Success) return false;
+
+            string hash = scratch.PositionHash();
+            if (koHash is not null && hash == koHash) return false;
+            return !forbidden.Contains(hash);
+        };
+    }
+
 
     // ----- internal helpers -----
+
+    private static readonly (int, int)[] HandicapOrder9 =
+        { (2, 6), (6, 2), (6, 6), (2, 2), (4, 4), (2, 4), (6, 4), (4, 2), (4, 6) };
+
+    private static readonly (int, int)[] HandicapOrder13 =
+        { (3, 9), (9, 3), (9, 9), (3, 3), (3, 6), (9, 6), (6, 9), (6, 3), (6, 6) };
+
+    private static readonly (int, int)[] HandicapOrder19 =
+        { (3, 15), (15, 3), (15, 15), (3, 3), (3, 9), (15, 9), (9, 15), (9, 3), (9, 9) };
+
+    /// <summary>
+    /// Places black's handicap stones and hands the first move to white.
+    /// Assumes the board is freshly created and the history is empty.
+    /// </summary>
+    private void ApplyHandicap(int count)
+    {
+        foreach (var (row, col) in HandicapPoints(BoardSize, count))
+            Board.ApplyMove(row, col, StoneColor.Black);
+        _currentPlayer = StoneColor.White;
+    }
 
     private sealed class Snapshot
     {
@@ -276,6 +407,7 @@ public sealed class GameManager
         public required GameState State { get; init; }
         public required StoneColor? Winner { get; init; }
         public required int MoveNumber { get; init; }
+        public required HashSet<GoPoint> DeadStones { get; init; }
     }
 
     private void PushSnapshot()
@@ -294,6 +426,7 @@ public sealed class GameManager
             State = _state,
             Winner = _winner,
             MoveNumber = _moveNumber,
+            DeadStones = new HashSet<GoPoint>(_deadStones),
         });
     }
 
@@ -308,6 +441,7 @@ public sealed class GameManager
         _state = snap.State;
         _winner = snap.Winner;
         _moveNumber = snap.MoveNumber;
+        _deadStones = new HashSet<GoPoint>(snap.DeadStones);
         _history.RemoveAt(_history.Count - 1);
 
         _positionCounts.Clear();

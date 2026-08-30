@@ -5,72 +5,14 @@
         Background="#14171F" WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize" ShowInTaskbar="False"
         TextOptions.TextFormattingMode="Display">
-    <Window.Resources>
-        <SolidColorBrush x:Key="PanelBg" Color="#1D2230"/>
-        <SolidColorBrush x:Key="PanelBg2" Color="#232A3C"/>
-        <SolidColorBrush x:Key="PanelBorder" Color="#2E3650"/>
-        <SolidColorBrush x:Key="TextPrimary" Color="#E9ECF4"/>
-        <SolidColorBrush x:Key="TextDim" Color="#9AA4BC"/>
-        <SolidColorBrush x:Key="Accent" Color="#F5C542"/>
-
-        <Style x:Key="Label" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
-            <Setter Property="FontSize" Value="12.5"/>
-            <Setter Property="Margin" Value="0,0,0,6"/>
-        </Style>
-
-        <Style x:Key="DialogButton" TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource PanelBg2}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="16,8"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="7" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="#2E3750"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="RadioRow" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Margin" Value="0,3"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="GroupName" Value="Mode"/>
-        </Style>
-
-        <Style x:Key="Combo" TargetType="ComboBox">
-            <Setter Property="Background" Value="{StaticResource PanelBg2}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}"/>
-            <Setter Property="Padding" Value="8,6"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Height" Value="34"/>
-        </Style>
-    </Window.Resources>
-
-    <Border Background="{StaticResource PanelBg}" Padding="22" CornerRadius="0">
+    <Border Background="{StaticResource PanelBg}" Padding="22">
         <StackPanel>
             <TextBlock Text="Start a new game" FontSize="18" FontWeight="SemiBold"
                        Foreground="{StaticResource TextPrimary}" Margin="0,0,0,18"/>
 
             <TextBlock Style="{StaticResource Label}" Text="Board size"/>
-            <ComboBox x:Name="SizeCombo" Style="{StaticResource Combo}" Margin="0,0,0,16">
+            <ComboBox x:Name="SizeCombo" Style="{StaticResource Combo}" Margin="0,0,0,16"
+                      SelectionChanged="SizeCombo_SelectionChanged">
                 <ComboBoxItem Content="9 × 9 — fast game"/>
                 <ComboBoxItem Content="13 × 13 — medium"/>
                 <ComboBoxItem Content="19 × 19 — full board"/>
@@ -82,14 +24,39 @@
             <RadioButton x:Name="ModeVsAIWhite" Style="{StaticResource RadioRow}" Content="Computer (Black) vs Human (White)"/>
             <RadioButton x:Name="ModeAIvAI" Style="{StaticResource RadioRow}" Content="Computer vs Computer (watch)"/>
 
-            <TextBlock Style="{StaticResource Label}" Text="White's komi (compensation for moving second)"
-                       Margin="0,14,0,6"/>
-            <TextBlock x:Name="KomiLabel" Foreground="{StaticResource Accent}" FontSize="15"
-                       FontWeight="SemiBold" Text="7.5" Margin="0,0,0,18"/>
+            <TextBlock Style="{StaticResource Label}" Text="Handicap stones for Black" Margin="0,14,0,6"/>
+            <ComboBox x:Name="HandicapCombo" Style="{StaticResource Combo}" Margin="0,0,0,6"
+                      SelectionChanged="HandicapCombo_SelectionChanged">
+                <ComboBoxItem Content="None — even game"/>
+                <ComboBoxItem Content="2 stones"/>
+                <ComboBoxItem Content="3 stones"/>
+                <ComboBoxItem Content="4 stones"/>
+                <ComboBoxItem Content="5 stones"/>
+                <ComboBoxItem Content="6 stones"/>
+                <ComboBoxItem Content="7 stones"/>
+                <ComboBoxItem Content="8 stones"/>
+                <ComboBoxItem Content="9 stones"/>
+            </ComboBox>
+            <TextBlock x:Name="HandicapHint" FontSize="11.5" Foreground="{StaticResource TextDim}"
+                       TextWrapping="Wrap" Margin="0,0,0,14"/>
 
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <TextBlock Style="{StaticResource Label}" Text="Komi — White's compensation for moving second"/>
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="KomiBox" Grid.Column="0" Style="{StaticResource DialogTextBox}"
+                         Width="80" TextChanged="KomiBox_TextChanged"/>
+                <TextBlock x:Name="KomiHint" Grid.Column="1" FontSize="11.5" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextDim}" Margin="10,0,0,0" TextWrapping="Wrap"/>
+            </Grid>
+            <TextBlock x:Name="KomiWarning" FontSize="11.5" Foreground="{StaticResource Accent}"
+                       TextWrapping="Wrap" Margin="0,0,0,18"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0">
                 <Button Style="{StaticResource DialogButton}" Content="Cancel" Width="100" Margin="0,0,10,0"
-                        IsCancel="True"/>
+                        IsCancel="True" Click="Cancel_Click"/>
                 <Button Style="{StaticResource DialogButton}" Content="Start Game" Width="120"
                         Background="#3A2E12" BorderBrush="#6B5426" Foreground="{StaticResource Accent}"
                         FontWeight="SemiBold" Click="Ok_Click" IsDefault="True"/>

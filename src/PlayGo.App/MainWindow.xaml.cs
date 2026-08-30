@@ -8,10 +8,22 @@ namespace PlayGo.App;
 
 public partial class MainWindow : Window
 {
+    /// <summary>Pause between moves in a computer-vs-computer game, so it is watchable.</summary>
+    private const int ComputerPacingMs = 500;
+
     private GameManager _game;
     private ScoreResult? _lastScore;
     private int _aiGeneration;
-    private readonly Random _rng = new();
+
+    /// <summary>
+    /// How many moves are shown while reviewing the game; null means "follow the
+    /// live position".
+    /// </summary>
+    private int? _reviewMoveCount;
+
+    /// <summary>Guards MoveList.SelectionChanged while the list is being rebuilt.</summary>
+    private bool _suppressReviewSelection;
+
 
     public MainWindow()
     {
@@ -52,15 +64,28 @@ public partial class MainWindow : Window
             Undo_Click(this, new RoutedEventArgs());
             e.Handled = true;
         }
+        else if (e.Key == Key.Escape && _reviewMoveCount is not null)
+        {
+            ExitReview();
+            RefreshStatus("Back to the live position.");
+            e.Handled = true;
+        }
     }
 
     // ---------- game events ----------
 
     private void OnBoardChanged()
     {
-        BoardControl.Board = _game.Board;
-        BoardControl.DeadStones = _game.DeadStones;
+        // Any change to the live position pulls the view back out of review mode.
+        bool wasReviewing = _reviewMoveCount is not null;
+        _reviewMoveCount = null;
+
         UpdateBoardVisuals();
+        if (wasReviewing)
+        {
+            UpdateReviewBar();
+            RefreshMoveList();
+        }
     }
 
     private void OnStatusChanged()
@@ -76,13 +101,63 @@ public partial class MainWindow : Window
 
     private void UpdateBoardVisuals()
     {
-        BoardControl.CurrentPlayer = _game.CurrentPlayer;
-        BoardControl.Interactive = _game.State == GameState.Playing && !_game.IsComputerTurn;
-        BoardControl.ScoringMode = _game.State == GameState.Scoring;
-        BoardControl.LastMove = _game.History.Count > 0
-            ? _game.History[^1].Point
-            : null;
+        TerritoryMap? territory = null;
+
+        if (_reviewMoveCount is int count)
+        {
+            // Reviewing: show a replayed position, with no interaction at all.
+            BoardControl.Board = _game.GetBoardAt(count - 1);
+            BoardControl.DeadStones = null;
+            BoardControl.LastMove = count > 0 ? _game.History[count - 1].Point : null;
+            BoardControl.CurrentPlayer = count > 0
+                ? _game.History[count - 1].Color.Opponent()
+                : StoneColor.Black;
+            BoardControl.Interactive = false;
+            BoardControl.ScoringMode = false;
+        }
+        else
+        {
+            BoardControl.Board = _game.Board;
+            BoardControl.DeadStones = _game.DeadStones;
+            BoardControl.CurrentPlayer = _game.CurrentPlayer;
+            BoardControl.Interactive = _game.State == GameState.Playing && !_game.IsComputerTurn;
+            BoardControl.ScoringMode = _game.State == GameState.Scoring;
+            BoardControl.LastMove = _game.History.Count > 0
+                ? _game.History[^1].Point
+                : null;
+
+            if (_game.State == GameState.Scoring)
+                territory = _game.Board.GetTerritory(_game.DeadStones);
+        }
+
+        BoardControl.Territory = territory;
         BoardControl.Refresh();
+        UpdateEstimate(territory);
+    }
+
+    /// <summary>
+    /// Running score shown while dead stones are being marked. Recomputed on
+    /// every board change so it tracks the marks as they are made.
+    /// </summary>
+    private void UpdateEstimate(TerritoryMap? territory)
+    {
+        if (_game.State != GameState.Scoring || territory is null)
+        {
+            EstimateBox.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var s = _game.Board.CountScore(territory, _game.DeadStones, _game.Komi);
+        EstimateBox.Visibility = Visibility.Visible;
+        EstBlackLabel.Text = $"{s.BlackTerritory} territory + {s.BlackStones} stones";
+        EstWhiteLabel.Text = $"{s.WhiteTerritory} territory + {s.WhiteStones} stones + komi";
+        EstDeadLabel.Text = s.DeadBlack + s.DeadWhite == 0
+            ? "none marked"
+            : $"{s.DeadBlack + s.DeadWhite} ({s.DeadBlack} black, {s.DeadWhite} white)";
+        EstScoreLabel.Text = $"{FormatScore(s.BlackScore)}  vs  {FormatScore(s.WhiteScore)}";
+        EstMarginLabel.Text = s.Winner is StoneColor w
+            ? $"{w.DisplayName()} +{FormatScore(s.Margin)}"
+            : "Even";
     }
 
     // ---------- side panel ----------
@@ -90,7 +165,13 @@ public partial class MainWindow : Window
     private void UpdateSidePanel()
     {
         bool playing = _game.State == GameState.Playing;
-        if (playing)
+        if (_reviewMoveCount is not null)
+        {
+            TurnStone.Fill = Brushes.Transparent;
+            TurnLabel.Text = "Reviewing";
+            TurnSubLabel.Text = $"Move {_reviewMoveCount} of {_game.History.Count} — play is paused";
+        }
+        else if (playing)
         {
             var color = _game.CurrentPlayer;
             TurnStone.Fill = color == StoneColor.Black
@@ -123,9 +204,12 @@ public partial class MainWindow : Window
         BlackPrisonersLabel.Text = $"{_game.BlackPrisoners} captured";
         WhitePrisonersLabel.Text = $"{_game.WhitePrisoners} captured";
 
-        PassButton.IsEnabled = playing;
-        ResignButton.IsEnabled = playing;
-        UndoButton.IsEnabled = _game.State != GameState.Scoring && _game.History.Count > 0;
+        // While the computer is thinking, its move is already in flight — let it
+        // land rather than racing it.
+        bool canAct = !_game.IsComputerTurn && _game.State != GameState.Finished;
+        PassButton.IsEnabled = canAct && playing;
+        ResignButton.IsEnabled = canAct && playing;
+        UndoButton.IsEnabled = canAct && _game.History.Count > 0;
 
         ScoringPanel.Visibility = _game.State == GameState.Scoring ? Visibility.Visible : Visibility.Collapsed;
         ResultPanel.Visibility = _game.State == GameState.Finished ? Visibility.Visible : Visibility.Collapsed;
@@ -146,6 +230,7 @@ public partial class MainWindow : Window
         }
 
         RefreshMoveList();
+        UpdateReviewBar();
     }
 
     private void FillResultPanel(ScoreResult s)
@@ -173,9 +258,92 @@ public partial class MainWindow : Window
             string w = i + 1 < history.Count ? FormatMove(history[i + 1]) : "";
             lines.Add($"{black.MoveNumber,3}.  {FormatMove(black),-8} {w}");
         }
+
+        _suppressReviewSelection = true;
         MoveList.ItemsSource = lines;
-        if (MoveList.Items.Count > 0)
-            MoveList.ScrollIntoView(MoveList.Items[MoveList.Items.Count - 1]);
+
+        if (_reviewMoveCount is int count && count > 0)
+        {
+            // Each row pairs two moves; highlight the row holding the reviewed one.
+            MoveList.SelectedIndex = Math.Min((count - 1) / 2, MoveList.Items.Count - 1);
+            MoveList.ScrollIntoView(MoveList.SelectedItem);
+        }
+        else
+        {
+            MoveList.SelectedIndex = -1;
+            if (MoveList.Items.Count > 0)
+                MoveList.ScrollIntoView(MoveList.Items[MoveList.Items.Count - 1]);
+        }
+        _suppressReviewSelection = false;
+    }
+
+    // ---------- move review ----------
+
+    private void MoveList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressReviewSelection || MoveList.SelectedIndex < 0) return;
+        EnterReview(Math.Min((MoveList.SelectedIndex + 1) * 2, _game.History.Count));
+    }
+
+    private void ReviewPrev_Click(object sender, RoutedEventArgs e)
+    {
+        StepReview(-1);
+    }
+
+    private void ReviewNext_Click(object sender, RoutedEventArgs e)
+    {
+        StepReview(+1);
+    }
+
+    private void ReviewLive_Click(object sender, RoutedEventArgs e)
+    {
+        ExitReview();
+        RefreshStatus("Back to the live position.");
+    }
+
+    /// <summary>Shows the position after <paramref name="count"/> moves.</summary>
+    private void EnterReview(int count)
+    {
+        _reviewMoveCount = Math.Clamp(count, 0, _game.History.Count);
+
+        // Drop any computer move already being worked on: reviewing pauses play.
+        _aiGeneration++;
+
+        UpdateBoardVisuals();
+        UpdateSidePanel(); // also refreshes the move list and the review bar
+
+        int total = _game.History.Count;
+        RefreshStatus(_reviewMoveCount == 0
+            ? $"Reviewing the empty board (move 0 of {total}). Press Esc or click Live to return."
+            : $"Reviewing move {_reviewMoveCount} of {total}. Press Esc or click Live to return.");
+    }
+
+    private void StepReview(int delta)
+    {
+        EnterReview((_reviewMoveCount ?? _game.History.Count) + delta);
+    }
+
+    private void ExitReview()
+    {
+        if (_reviewMoveCount is null) return;
+        _reviewMoveCount = null;
+        UpdateBoardVisuals();
+        UpdateSidePanel();
+        MaybeTriggerComputer(); // resume a computer turn that review paused
+    }
+
+    private void UpdateReviewBar()
+    {
+        ReviewBar.Visibility = _game.History.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        bool reviewing = _reviewMoveCount is not null;
+        ReviewLabel.Text = reviewing
+            ? $"Reviewing {_reviewMoveCount}/{_game.History.Count}"
+            : $"Live — {_game.History.Count} moves";
+
+        ReviewPrevButton.IsEnabled = !reviewing || _reviewMoveCount > 0;
+        ReviewNextButton.IsEnabled = reviewing && _reviewMoveCount < _game.History.Count;
+        ReviewLiveButton.IsEnabled = reviewing;
     }
 
     private static string FormatMove(GoMove m)
@@ -192,6 +360,7 @@ public partial class MainWindow : Window
     private void OnBoardMoveRequested(object? sender, GoPoint point)
     {
         if (_game.State != GameState.Playing || _game.IsComputerTurn) return;
+        ExitReview();
         var result = _game.PlayStone(point.Row, point.Col);
         if (!result.Success)
             RefreshStatus(result.Error ?? "Illegal move.");
@@ -208,7 +377,8 @@ public partial class MainWindow : Window
 
     private void Pass_Click(object sender, RoutedEventArgs e)
     {
-        if (_game.State != GameState.Playing) return;
+        if (_game.State != GameState.Playing || _game.IsComputerTurn) return;
+        ExitReview();
         var move = _game.Pass();
         if (move is not null)
         {
@@ -221,16 +391,27 @@ public partial class MainWindow : Window
 
     private void Undo_Click(object sender, RoutedEventArgs e)
     {
+        ExitReview();
+
+        // Refuse while the computer owns the turn: its move is already in flight.
+        if (_game.IsComputerTurn) return;
+
+        // Discard any computer move that is still being calculated for the
+        // position we are about to leave behind.
+        _aiGeneration++;
+
         if (_game.Undo())
             RefreshStatus("Move undone.");
     }
 
     private void Resign_Click(object sender, RoutedEventArgs e)
     {
-        if (_game.State != GameState.Playing) return;
+        if (_game.State != GameState.Playing || _game.IsComputerTurn) return;
         if (MessageBox.Show(this, "Resign now? Your opponent will win.",
                 "Resign", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
+        ExitReview();
+        _aiGeneration++;
         var move = _game.Resign();
         if (move is not null)
             RefreshStatus($"{move.Color.DisplayName()} resigned — {_game.Winner!.Value.DisplayName()} wins.");
@@ -241,7 +422,8 @@ public partial class MainWindow : Window
     {
         var dialog = new NewGameDialog(_game.BoardSize,
             _game.BlackPlayer == PlayerType.Computer,
-            _game.WhitePlayer == PlayerType.Computer)
+            _game.WhitePlayer == PlayerType.Computer,
+            _game.Komi, _game.Handicap)
         {
             Owner = this,
         };
@@ -249,9 +431,13 @@ public partial class MainWindow : Window
 
         _aiGeneration++; // cancel any in-flight computer move
         _lastScore = null;
+        _reviewMoveCount = null;
         _game.NewGame(dialog.BoardSize, dialog.BlackIsComputer ? PlayerType.Computer : PlayerType.Human,
-            dialog.WhiteIsComputer ? PlayerType.Computer : PlayerType.Human);
-        RefreshStatus($"New {dialog.BoardSize}×{dialog.BoardSize} game. Black to move.");
+            dialog.WhiteIsComputer ? PlayerType.Computer : PlayerType.Human,
+            dialog.Komi, dialog.Handicap);
+        RefreshStatus(dialog.Handicap > 0
+            ? $"New {dialog.BoardSize}×{dialog.BoardSize} game with {dialog.Handicap} handicap stone(s). White to move."
+            : $"New {dialog.BoardSize}×{dialog.BoardSize} game. Black to move.");
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
@@ -279,8 +465,12 @@ public partial class MainWindow : Window
             "• Press P or click Pass to give up your turn. When both players " +
             "pass, the game is scored.\n\n" +
             "Scoring uses Chinese area rules: your score is your territory " +
-            "plus your stones still on the board. White receives a komi of 7.5 " +
-            "to compensate for moving second.";
+            "plus your stones still on the board. White receives a komi " +
+            "(5.5 on 9×9, 6.5 on 13×13, 7.5 on 19×19) to compensate for " +
+            "moving second.\n\n" +
+            "When both players pass, click the dead stones to mark them — " +
+            "the whole group is marked at once, and the score updates as you " +
+            "go. You can also step back through the game from Move History.";
         MessageBox.Show(this, help, "How to Play Go", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -298,6 +488,7 @@ public partial class MainWindow : Window
 
     private void CountScore_Click(object sender, RoutedEventArgs e)
     {
+        ExitReview();
         var score = _game.CountScore();
         if (score is null) return;
         _lastScore = score;
@@ -310,6 +501,7 @@ public partial class MainWindow : Window
 
     private void ResumePlay_Click(object sender, RoutedEventArgs e)
     {
+        ExitReview();
         _game.ResumePlay();
         RefreshStatus("Play resumed — pass again to restart scoring.");
     }
@@ -323,33 +515,47 @@ public partial class MainWindow : Window
 
     private void MaybeTriggerComputer()
     {
-        if (!_game.IsComputerTurn || _game.State != GameState.Playing)
+        // Reviewing pauses the game, so a computer move is never played
+        // underneath the position being examined.
+        if (_reviewMoveCount is null && _game.IsComputerTurn && _game.State == GameState.Playing)
         {
-            UpdateBoardVisuals();
+            ScheduleComputerMove();
             return;
         }
-        ScheduleComputerMove();
+        UpdateBoardVisuals();
     }
 
-    private void ScheduleComputerMove()
+    private async void ScheduleComputerMove()
     {
         int gen = ++_aiGeneration;
         var snapshotBoard = _game.Board.Clone();
         var color = _game.CurrentPlayer;
         int moveNumber = _game.MoveNumber;
         int size = _game.BoardSize;
-        var rng = _rng;
+        // Random.Shared rather than a private Random: the search runs on a
+        // worker thread, and Random is not thread-safe.
+        var rng = Random.Shared;
+
+        // The filter carries its own copy of the board and the ko / superko
+        // history, so the worker below never reads live game state off-thread.
+        var isLegal = _game.CreateLegalityFilter();
 
         UpdateBoardVisuals();
         RefreshStatus($"{color.DisplayName()} (computer) is thinking…");
+
+        // Two computers play far faster than anyone can follow, so pace it.
+        if (_game.BlackPlayer == PlayerType.Computer && _game.WhitePlayer == PlayerType.Computer)
+        {
+            await Task.Delay(ComputerPacingMs);
+            if (gen != _aiGeneration) return;
+        }
 
         _ = Task.Run(() =>
         {
             GoPoint? point;
             try
             {
-                point = GoAI.ChooseMove(snapshotBoard, color, rng, moveNumber, size * size,
-                    isLegal: (r, c) => _game.CanPlay(r, c).Success);
+                point = GoAI.ChooseMove(snapshotBoard, color, rng, moveNumber, size * size, isLegal: isLegal);
             }
             catch
             {

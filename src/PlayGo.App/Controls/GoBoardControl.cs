@@ -28,6 +28,18 @@ public sealed class GoBoardControl : FrameworkElement
     private static readonly Brush WhiteStone = CreateStoneBrush(Color.FromRgb(0xFF, 0xFF, 0xFF), Color.FromRgb(0xC2, 0xC2, 0xC2));
     private static readonly Pen WhiteStoneOutline = new(new SolidColorBrush(Color.FromRgb(0x8A, 0x8A, 0x8A)), 1.0);
 
+    // Ghost stones for the hovered intersection. Kept pre-built: the old code
+    // cloned a brush on every mouse move, which allocated on every frame.
+    private static readonly Brush BlackGhost = CreateStoneBrush(Color.FromRgb(0x6F, 0x6F, 0x72), Color.FromRgb(0x08, 0x08, 0x0A), 0.35);
+    private static readonly Brush WhiteGhost = CreateStoneBrush(Color.FromRgb(0xFF, 0xFF, 0xFF), Color.FromRgb(0xC2, 0xC2, 0xC2), 0.35);
+
+    // Territory shading shown while marking dead stones.
+    private static readonly Brush BlackTerritoryBrush = CreateFrozenBrush(Color.FromArgb(0x77, 0x12, 0x14, 0x1A));
+    private static readonly Brush WhiteTerritoryBrush = CreateFrozenBrush(Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF));
+
+    private static readonly Pen WoodGrainPen = CreateFrozenPen(Color.FromArgb(0x20, 0x00, 0x00, 0x00), 1.0);
+    private static readonly (Point From, Point To)[] WoodGrainLines = CreateWoodGrain();
+
     private GoBoard? _board;
     private GoPoint? _hover;
     private bool _interactive;
@@ -67,6 +79,12 @@ public sealed class GoBoardControl : FrameworkElement
 
     public IReadOnlyCollection<GoPoint>? DeadStones { get; set; }
 
+    /// <summary>
+    /// Territory ownership used to shade empty points during scoring. Set to
+    /// null outside the scoring phase.
+    /// </summary>
+    public TerritoryMap? Territory { get; set; }
+
     public bool ShowCoordinates { get; set; } = true;
 
     /// <summary>Raised when the user clicks an empty intersection during play.</summary>
@@ -89,6 +107,7 @@ public sealed class GoBoardControl : FrameworkElement
         DrawStarPoints(dc, cell, ox, oy);
         if (ShowCoordinates)
             DrawCoordinates(dc, cell, ox, oy);
+        DrawTerritory(dc, cell, ox, oy);
         DrawStones(dc, cell, ox, oy);
         DrawHover(dc, cell, ox, oy);
     }
@@ -109,14 +128,26 @@ public sealed class GoBoardControl : FrameworkElement
         var rect = new Rect(2, 2, ActualWidth - 4, ActualHeight - 4);
         dc.DrawRoundedRectangle(WoodBrush, WoodBorderPen, rect, 10, 10);
 
-        // Subtle wood grain: a few long translucent streaks.
-        var grain = new Pen(new SolidColorBrush(Color.FromArgb(0x20, 0x00, 0x00, 0x00)), 1.0);
-        var rng = new Random(7);
-        for (int i = 0; i < 14; i++)
+        // Subtle wood grain. The streaks are generated once and stretched to the
+        // current size, so nothing is allocated per frame.
+        foreach (var (from, to) in WoodGrainLines)
         {
-            double y = rng.NextDouble() * ActualHeight;
-            dc.DrawLine(grain, new Point(0, y), new Point(ActualWidth, y + rng.NextDouble() * 6 - 3));
+            dc.DrawLine(WoodGrainPen,
+                new Point(from.X * ActualWidth, from.Y * ActualHeight),
+                new Point(to.X * ActualWidth, to.Y * ActualHeight));
         }
+    }
+
+    private static (Point From, Point To)[] CreateWoodGrain()
+    {
+        var rng = new Random(7);
+        var lines = new (Point, Point)[14];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            double y = rng.NextDouble();
+            lines[i] = (new Point(0, y), new Point(1, y + (rng.NextDouble() * 6 - 3) / 800.0));
+        }
+        return lines;
     }
 
     private void DrawGrid(DrawingContext dc, double cell, double ox, double oy, double boardLen)
@@ -172,6 +203,34 @@ public sealed class GoBoardControl : FrameworkElement
         }
     }
 
+    /// <summary>
+    /// Shades each empty point according to who encloses it. Only drawn during
+    /// scoring, where it turns "mark the dead stones" from guesswork into
+    /// something you can see.
+    /// </summary>
+    private void DrawTerritory(DrawingContext dc, double cell, double ox, double oy)
+    {
+        if (Territory is null || Territory.Size != _board!.Size) return;
+
+        int n = _board.Size;
+        double r = cell * 0.24;
+
+        for (int row = 0; row < n; row++)
+        {
+            for (int col = 0; col < n; col++)
+            {
+                if (_board[row, col] != StoneColor.Empty) continue;
+
+                var owner = Territory[row, col];
+                if (owner is not (PointOwner.Black or PointOwner.White)) continue;
+
+                var brush = owner == PointOwner.Black ? BlackTerritoryBrush : WhiteTerritoryBrush;
+                dc.DrawRectangle(brush, null,
+                    new Rect(ox + col * cell - r, oy + row * cell - r, r * 2, r * 2));
+            }
+        }
+    }
+
     private void DrawStones(DrawingContext dc, double cell, double ox, double oy)
     {
         int n = _board!.Size;
@@ -220,9 +279,7 @@ public sealed class GoBoardControl : FrameworkElement
         if (_board[hp.Row, hp.Col] != StoneColor.Empty) return;
 
         double r = cell * 0.465;
-        var brush = CurrentPlayer == StoneColor.Black ? BlackStone : WhiteStone;
-        brush = brush.Clone();
-        brush.Opacity = 0.35;
+        var brush = CurrentPlayer == StoneColor.Black ? BlackGhost : WhiteGhost;
         dc.DrawEllipse(brush, null, new Point(ox + hp.Col * cell, oy + hp.Row * cell), r, r);
     }
 
@@ -285,7 +342,7 @@ public sealed class GoBoardControl : FrameworkElement
         return brush;
     }
 
-    private static Brush CreateStoneBrush(Color highlight, Color shadow)
+    private static Brush CreateStoneBrush(Color highlight, Color shadow, double opacity = 1.0)
     {
         var brush = new RadialGradientBrush
         {
@@ -293,12 +350,27 @@ public sealed class GoBoardControl : FrameworkElement
             Center = new Point(0.5, 0.5),
             RadiusX = 0.5,
             RadiusY = 0.5,
+            Opacity = opacity,
         };
         brush.GradientStops.Add(new GradientStop(highlight, 0.0));
         brush.GradientStops.Add(new GradientStop(highlight, 0.15));
         brush.GradientStops.Add(new GradientStop(shadow, 1.0));
         brush.Freeze();
         return brush;
+    }
+
+    private static Brush CreateFrozenBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private static Pen CreateFrozenPen(Color color, double thickness)
+    {
+        var pen = new Pen(new SolidColorBrush(color), thickness);
+        pen.Freeze();
+        return pen;
     }
 }
 

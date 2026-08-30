@@ -2,6 +2,69 @@ using System.Text;
 
 namespace PlayGo.Core;
 
+/// <summary>Who an empty region of the board belongs to.</summary>
+public enum PointOwner
+{
+    /// <summary>No stone borders this region (an empty or fully open board).</summary>
+    None,
+
+    Black,
+    White,
+
+    /// <summary>The region borders both colours — contested, or a neutral dame point.</summary>
+    Both,
+}
+
+/// <summary>
+/// The result of flood-filling every empty region of a board: an owner per
+/// intersection, the size of each region, and the resulting territory counts.
+/// </summary>
+public sealed class TerritoryMap
+{
+    private readonly PointOwner[] _owners;
+
+    internal TerritoryMap(int size, PointOwner[] owners, IReadOnlyList<Region> regions,
+        int blackTerritory, int whiteTerritory, int neutral)
+    {
+        Size = size;
+        _owners = owners;
+        Regions = regions;
+        BlackTerritory = blackTerritory;
+        WhiteTerritory = whiteTerritory;
+        Neutral = neutral;
+    }
+
+    public int Size { get; }
+
+    /// <summary>Ownership of each intersection. Occupied points report <see cref="PointOwner.None"/>.</summary>
+    public PointOwner this[int row, int col] => _owners[row * Size + col];
+
+    public IReadOnlyList<Region> Regions { get; }
+
+    public int BlackTerritory { get; }
+
+    public int WhiteTerritory { get; }
+
+    /// <summary>Empty points in regions that are open or touch both colours (dame).</summary>
+    public int Neutral { get; }
+}
+
+/// <summary>A maximal connected group of empty points, plus who surrounds it.</summary>
+public sealed class Region
+{
+    internal Region(PointOwner owner, IReadOnlyList<GoPoint> points)
+    {
+        Owner = owner;
+        Points = points;
+    }
+
+    public PointOwner Owner { get; }
+
+    public IReadOnlyList<GoPoint> Points { get; }
+
+    public int Count => Points.Count;
+}
+
 /// <summary>
 /// A Go board plus the low-level rules: placing stones, capturing groups,
 /// suicide detection, group/liberty queries and area scoring.
@@ -194,25 +257,25 @@ public sealed class GoBoard
     }
 
     /// <summary>
-    /// Chinese-area scoring. Dead stones are removed from the board before
-    /// counting: each empty point that touches only black is black territory,
-    /// only white is white territory; points touching both are neutral (dame).
-    /// Score = territory + live stones on the board; White receives komi.
+    /// Flood-fills every empty region and reports who surrounds it. Dead stones
+    /// are treated as removed first, so the points they occupied join the
+    /// surrounding region. Used by area scoring and by the on-board territory
+    /// preview; the result is a snapshot and does not track later board changes.
     /// </summary>
-    public ScoreResult CountScore(ISet<GoPoint> deadStones, double komi)
+    public TerritoryMap GetTerritory(IEnumerable<GoPoint>? deadStones = null)
     {
         var work = (StoneColor[,])_cells.Clone();
-        int deadBlack = 0, deadWhite = 0;
-        foreach (var d in deadStones)
+        if (deadStones is not null)
         {
-            if (!InBounds(d.Row, d.Col)) continue;
-            if (work[d.Row, d.Col] == StoneColor.Black) deadBlack++;
-            else if (work[d.Row, d.Col] == StoneColor.White) deadWhite++;
-            work[d.Row, d.Col] = StoneColor.Empty;
+            foreach (var d in deadStones)
+                if (InBounds(d.Row, d.Col))
+                    work[d.Row, d.Col] = StoneColor.Empty;
         }
 
-        int blackTerritory = 0, whiteTerritory = 0, neutral = 0;
+        var owners = new PointOwner[Size * Size];
         var visited = new bool[Size, Size];
+        var regions = new List<Region>();
+        int blackTerritory = 0, whiteTerritory = 0, neutral = 0;
 
         for (int r = 0; r < Size; r++)
         {
@@ -220,8 +283,7 @@ public sealed class GoBoard
             {
                 if (work[r, c] != StoneColor.Empty || visited[r, c]) continue;
 
-                // Flood-fill one empty region.
-                var region = new List<GoPoint>();
+                var points = new List<GoPoint>();
                 var borders = new HashSet<StoneColor>();
                 var queue = new Queue<GoPoint>();
                 visited[r, c] = true;
@@ -230,42 +292,82 @@ public sealed class GoBoard
                 while (queue.Count > 0)
                 {
                     var p = queue.Dequeue();
-                    region.Add(p);
+                    points.Add(p);
                     foreach (var n in Neighbors(p.Row, p.Col))
                     {
-                        var c2 = work[n.Row, n.Col];
-                        if (c2 == StoneColor.Empty && !visited[n.Row, n.Col])
+                        var v = work[n.Row, n.Col];
+                        if (v == StoneColor.Empty)
                         {
-                            visited[n.Row, n.Col] = true;
-                            queue.Enqueue(n);
+                            if (!visited[n.Row, n.Col])
+                            {
+                                visited[n.Row, n.Col] = true;
+                                queue.Enqueue(n);
+                            }
                         }
-                        else if (c2 != StoneColor.Empty)
+                        else
                         {
-                            borders.Add(c2);
+                            borders.Add(v);
                         }
                     }
                 }
 
-                if (borders.Contains(StoneColor.Black) && !borders.Contains(StoneColor.White))
-                    blackTerritory += region.Count;
-                else if (borders.Contains(StoneColor.White) && !borders.Contains(StoneColor.Black))
-                    whiteTerritory += region.Count;
-                else
-                    neutral += region.Count;
+                var owner = borders.Count switch
+                {
+                    0 => PointOwner.None,
+                    // Bordered by both colours: contested territory or a dame point.
+                    > 1 => PointOwner.Both,
+                    _ => borders.Contains(StoneColor.Black) ? PointOwner.Black : PointOwner.White,
+                };
+
+                foreach (var p in points)
+                    owners[p.Row * Size + p.Col] = owner;
+                regions.Add(new Region(owner, points));
+
+                if (owner == PointOwner.Black) blackTerritory += points.Count;
+                else if (owner == PointOwner.White) whiteTerritory += points.Count;
+                else neutral += points.Count;
             }
+        }
+
+        return new TerritoryMap(Size, owners, regions, blackTerritory, whiteTerritory, neutral);
+    }
+
+    /// <summary>
+    /// Chinese-area scoring. Dead stones are removed from the board before
+    /// counting: each empty point that touches only black is black territory,
+    /// only white is white territory; points touching both are neutral (dame).
+    /// Score = territory + live stones on the board; White receives komi.
+    /// </summary>
+    public ScoreResult CountScore(IEnumerable<GoPoint> deadStones, double komi) =>
+        CountScore(GetTerritory(deadStones), deadStones, komi);
+
+    /// <summary>
+    /// Scores a position from a territory map that has already been computed.
+    /// Lets the UI share a single flood fill between the on-board preview and
+    /// the running score estimate.
+    /// </summary>
+    public ScoreResult CountScore(TerritoryMap map, IEnumerable<GoPoint> deadStones, double komi)
+    {
+        int deadBlack = 0, deadWhite = 0;
+        foreach (var d in deadStones)
+        {
+            if (!InBounds(d.Row, d.Col)) continue;
+            var stone = _cells[d.Row, d.Col];
+            if (stone == StoneColor.Black) deadBlack++;
+            else if (stone == StoneColor.White) deadWhite++;
         }
 
         int blackStones = StoneCount(StoneColor.Black) - deadBlack;
         int whiteStones = StoneCount(StoneColor.White) - deadWhite;
 
-        double blackScore = blackTerritory + blackStones;
-        double whiteScore = whiteTerritory + whiteStones + komi;
+        double blackScore = map.BlackTerritory + blackStones;
+        double whiteScore = map.WhiteTerritory + whiteStones + komi;
 
         return new ScoreResult(
             blackScore, whiteScore, komi,
-            blackTerritory, whiteTerritory,
+            map.BlackTerritory, map.WhiteTerritory,
             blackStones, whiteStones,
-            deadBlack, deadWhite, neutral);
+            deadBlack, deadWhite, map.Neutral);
     }
 }
 
