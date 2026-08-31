@@ -194,6 +194,26 @@ public static class GoAI
             score += 30;
         }
 
+        // 4.5 Eyes: filling your own eye almost always loses the group; making
+        //     a new eye almost always keeps it alive.
+        bool isOwnEye = board.IsEye(row, col, me);
+        if (isOwnEye && !worthPlaying) score -= 350;
+        if (!isOwnEye)
+        {
+            int createdEyes = 0;
+            foreach (var n in board.Neighbors(row, col))
+            {
+                if (board[n.Row, n.Col] != StoneColor.Empty) continue;
+                if (board.WouldCreateEye(n.Row, n.Col, new GoPoint(row, col), me))
+                    createdEyes++;
+            }
+            if (createdEyes > 0)
+            {
+                score += createdEyes * 50;
+                worthPlaying = true;
+            }
+        }
+
         // 5. Proximity: building connected shapes beats scattering stones.
         int friends = 0;
         foreach (var n in board.Neighbors(row, col))

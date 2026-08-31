@@ -328,6 +328,36 @@ public sealed class GameManager
     }
 
     /// <summary>
+    /// Places a stone outside the normal move sequence. This is for loading a
+    /// game record that carries setup stones (handicap): the stone is put on
+    /// the board without being recorded as a move, without captures counting
+    /// as a turn, and without changing whose move it is.
+    /// </summary>
+    public void PlaceSetupStone(int row, int col, StoneColor color)
+    {
+        if (!Board.InBounds(row, col)) return;
+        if (Board[row, col] != StoneColor.Empty) return;
+
+        Board.ApplyMove(row, col, color);
+
+        // Setup stones are part of the starting position, so re-baseline the
+        // superko history: the position they create is the new point of origin.
+        _positionCounts.Clear();
+        _positionCounts[Board.PositionHash()] = 1;
+        RaiseBoard();
+    }
+
+    /// <summary>
+    /// Sets whose turn it is. Used when loading a record: after black's setup
+    /// stones are placed, white has the first move.
+    /// </summary>
+    public void SetTurn(StoneColor color)
+    {
+        _currentPlayer = color;
+        RaiseStatus();
+    }
+
+    /// <summary>
     /// Rebuilds the position after <paramref name="index"/> recorded moves (0-based).
     /// Pass -1 for the starting position. Handicap stones are included: they are
     /// placed before the first move and never appear in the move history.

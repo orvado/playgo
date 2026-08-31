@@ -4,12 +4,19 @@
     <ProjectReference Include="..\PlayGo.Core\PlayGo.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Stone sounds. Regenerate with: python tools/make-sounds.py -->
+    <Content Include="Sounds\place.wav" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Sounds\capture.wav" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>playgo.ico</ApplicationIcon>
   </PropertyGroup>
 
 </Project>

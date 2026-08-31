@@ -169,6 +169,54 @@ public sealed class GoBoard
     public int LibertyCount(int row, int col) => GetGroupInfo(row, col).Liberties.Count;
 
     /// <summary>
+    /// True when the empty point at (row, col) is a true eye for
+    /// <paramref name="color"/>: all four orthogonal neighbours are that
+    /// colour, and at most one of the diagonals (if present) holds an
+    /// opponent stone. Corner and edge eyes have fewer diagonals and so
+    /// require none. This is the standard shape check.
+    /// </summary>
+    public bool IsEye(int row, int col, StoneColor color)
+        => IsEyeAt(row, col, color, extraPoint: null);
+
+    /// <summary>
+    /// True when (row, col) would become a true eye for
+    /// <paramref name="placedColor"/> if a stone of that colour were
+    /// virtually placed at <paramref name="placedAt"/>. Used by the engine
+    /// to reward moves that create eyes.
+    /// </summary>
+    public bool WouldCreateEye(int row, int col, GoPoint placedAt, StoneColor placedColor)
+        => IsEyeAt(row, col, placedColor, placedAt);
+
+    private bool IsEyeAt(int row, int col, StoneColor color, GoPoint? extraPoint)
+    {
+        if (!InBounds(row, col)) return false;
+
+        // Treat the hypothetical stone as if it were already on the board.
+        StoneColor ColorAt(int r, int c) =>
+            extraPoint is GoPoint e && e.Row == r && e.Col == c ? color : _cells[r, c];
+
+        // An eye must be empty.
+        if (ColorAt(row, col) != StoneColor.Empty) return false;
+
+        // Every orthogonal neighbour must belong to the eye's colour.
+        foreach (var n in Neighbors(row, col))
+            if (ColorAt(n.Row, n.Col) != color) return false;
+
+        // Interior points tolerate one opponent diagonal; edge / corner
+        // eyes have missing diagonals and so tolerate none.
+        int oppDiag = 0;
+        bool interior = true;
+        for (int dr = -1; dr <= 1; dr += 2)
+            for (int dc = -1; dc <= 1; dc += 2)
+            {
+                int nr = row + dr, nc = col + dc;
+                if (!InBounds(nr, nc)) { interior = false; continue; }
+                if (ColorAt(nr, nc) == color.Opponent()) oppDiag++;
+            }
+        return interior ? oppDiag <= 1 : oppDiag == 0;
+    }
+
+    /// <summary>
     /// Evaluates a move without mutating this board (works on a scratch copy),
     /// so callers can validate legality cheaply before committing.
     /// </summary>

@@ -129,6 +129,12 @@
                     </Setter>
                 </Style>
             </Menu.Resources>
+            <MenuItem Header="_File">
+                <MenuItem Header="_Open Game Record…" Click="OpenGame_Click" InputGestureText="Ctrl+O"/>
+                <Separator/>
+                <MenuItem Header="_Save Game Record" Click="SaveGame_Click" InputGestureText="Ctrl+S"/>
+                <MenuItem Header="Save Game Record _As…" Click="SaveGameAs_Click"/>
+            </MenuItem>
             <MenuItem Header="_Game">
                 <MenuItem Header="_New Game…" Click="NewGame_Click" InputGestureText="Ctrl+N"/>
                 <Separator/>
@@ -142,6 +148,10 @@
             <MenuItem Header="_View">
                 <MenuItem Header="Show _Coordinates" x:Name="ShowCoordsItem" IsCheckable="True" IsChecked="True"
                           Click="ToggleCoordinates_Click"/>
+                <MenuItem Header="Play _Sounds" x:Name="SoundsItem" IsCheckable="True" IsChecked="True"
+                          Click="ToggleSounds_Click"/>
+                <MenuItem Header="Show Move _Numbers" x:Name="MoveNumbersItem" IsCheckable="True"
+                          Click="ToggleMoveNumbers_Click"/>
             </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Header="_How to play Go" Click="HowToPlay_Click"/>

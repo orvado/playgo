@@ -1,7 +1,9 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using Microsoft.Win32;
 using PlayGo.Core;
 
 namespace PlayGo.App;
@@ -23,6 +25,16 @@ public partial class MainWindow : Window
 
     /// <summary>Guards MoveList.SelectionChanged while the list is being rebuilt.</summary>
     private bool _suppressReviewSelection;
+
+    /// <summary>Where the current game was last saved, so Save can reuse it.</summary>
+    private string? _recordPath;
+
+    /// <summary>
+    /// Set while a game record is being replayed. Replaying fires the same
+    /// board-changed events as real play, so this stops the computer from
+    /// trying to answer moves as they stream past.
+    /// </summary>
+    private bool _loadingGame;
 
 
     public MainWindow()
@@ -52,6 +64,16 @@ public partial class MainWindow : Window
         if (ctrl && e.Key == Key.N)
         {
             NewGame_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (ctrl && e.Key == Key.O)
+        {
+            OpenGame_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (ctrl && e.Key == Key.S)
+        {
+            SaveGame_Click(this, new RoutedEventArgs());
             e.Handled = true;
         }
         else if (e.Key == Key.P && !e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Alt))
@@ -131,6 +153,7 @@ public partial class MainWindow : Window
         }
 
         BoardControl.Territory = territory;
+        SyncMoveNumbers();
         BoardControl.Refresh();
         UpdateEstimate(territory);
     }
@@ -362,12 +385,27 @@ public partial class MainWindow : Window
         if (_game.State != GameState.Playing || _game.IsComputerTurn) return;
         ExitReview();
         var result = _game.PlayStone(point.Row, point.Col);
+
         if (!result.Success)
-            RefreshStatus(result.Error ?? "Illegal move.");
-        else if (result.CapturedCount > 0)
+        {
+            string reason = result.Error ?? "Illegal move.";
+            // Say it on the board as well as in the status bar: the status bar
+            // is easy to miss while you are looking at an intersection.
+            BoardControl.FlashIllegal(point, reason);
+            RefreshStatus(reason);
+            return;
+        }
+
+        if (result.CapturedCount > 0)
+        {
+            SoundService.PlayCapture();
             RefreshStatus($"{_game.CurrentPlayer.Opponent().DisplayName()} captured {result.CapturedCount} stone(s).");
+        }
         else
+        {
+            SoundService.PlayStone();
             RefreshStatus($"{_game.History[^1].ToNotation()} played.");
+        }
     }
 
     private void OnBoardStoneMarked(object? sender, GoPoint point)
@@ -432,6 +470,8 @@ public partial class MainWindow : Window
         _aiGeneration++; // cancel any in-flight computer move
         _lastScore = null;
         _reviewMoveCount = null;
+        _recordPath = null; // a new game is not the saved record any more
+        BoardControl.ClearCursor();
         _game.NewGame(dialog.BoardSize, dialog.BlackIsComputer ? PlayerType.Computer : PlayerType.Human,
             dialog.WhiteIsComputer ? PlayerType.Computer : PlayerType.Human,
             dialog.Komi, dialog.Handicap);
@@ -448,6 +488,148 @@ public partial class MainWindow : Window
         {
             BoardControl.ShowCoordinates = ShowCoordsItem.IsChecked;
             BoardControl.Refresh();
+        }
+    }
+
+    private void ToggleSounds_Click(object sender, RoutedEventArgs e)
+    {
+        SoundService.Enabled = SoundsItem.IsChecked;
+        RefreshStatus(SoundService.Enabled ? "Stone sounds on." : "Stone sounds off.");
+    }
+
+    private void ToggleMoveNumbers_Click(object sender, RoutedEventArgs e)
+    {
+        BoardControl.ShowMoveNumbers = MoveNumbersItem.IsChecked;
+        SyncMoveNumbers();
+        BoardControl.Refresh();
+    }
+
+    /// <summary>
+    /// Keeps the board's move-number overlay in step with the game. While
+    /// reviewing, only the moves up to the reviewed position are numbered.
+    /// </summary>
+    private void SyncMoveNumbers()
+    {
+        if (!BoardControl.ShowMoveNumbers)
+        {
+            BoardControl.MoveHistory = null;
+            return;
+        }
+
+        BoardControl.MoveHistory = _reviewMoveCount is int count
+            ? _game.History.Take(count).ToArray()
+            : _game.History;
+    }
+
+    // ---------- game records ----------
+
+    private void OpenGame_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Open a Go game record",
+            Filter = Sgf.FileFilter,
+            DefaultExt = ".sgf",
+            CheckFileExists = true,
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        string text;
+        try
+        {
+            text = File.ReadAllText(dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"The file could not be read.\n\n{ex.Message}", "Open game record",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        if (!Sgf.TryParse(text, out var record, out var parseError) || record is null)
+        {
+            MessageBox.Show(this, parseError ?? "That file is not a game record this app can read.",
+                "Open game record", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        // Stop anything in flight, then replay without the computer answering
+        // each move as it streams past.
+        _aiGeneration++;
+        _lastScore = null;
+        _reviewMoveCount = null;
+        BoardControl.ClearCursor();
+
+        bool ok;
+        string? loadError;
+        _loadingGame = true;
+        try
+        {
+            ok = Sgf.TryLoad(_game, record, out loadError);
+        }
+        catch (Exception ex)
+        {
+            ok = false;
+            loadError = ex.Message;
+        }
+        finally
+        {
+            _loadingGame = false;
+        }
+
+        _recordPath = ok ? dialog.FileName : null;
+        UpdateBoardVisuals();
+        UpdateSidePanel();
+
+        if (!ok)
+        {
+            RefreshStatus("The game record could not be replayed.");
+            MessageBox.Show(this, loadError ?? "The record could not be replayed.", "Open game record",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        MaybeTriggerComputer();
+        RefreshStatus($"Loaded {record.Moves.Count} moves from {Path.GetFileName(dialog.FileName)}.");
+    }
+
+    private void SaveGame_Click(object sender, RoutedEventArgs e)
+    {
+        // No filename chosen yet: fall through to Save As.
+        if (_recordPath is null)
+        {
+            SaveGameAs_Click(sender, e);
+            return;
+        }
+        SaveRecordTo(_recordPath);
+    }
+
+    private void SaveGameAs_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Save this game as a record",
+            Filter = Sgf.FileFilter,
+            DefaultExt = ".sgf",
+            AddExtension = true,
+            FileName = $"playgo-{DateTime.Now:yyyyMMdd-HHmm}.sgf",
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        SaveRecordTo(dialog.FileName);
+    }
+
+    private void SaveRecordTo(string path)
+    {
+        try
+        {
+            File.WriteAllText(path, Sgf.Save(Sgf.FromGame(_game, _lastScore)));
+            _recordPath = path;
+            RefreshStatus($"Saved {_game.History.Count} moves to {Path.GetFileName(path)}.");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"The file could not be saved.\n\n{ex.Message}", "Save game record",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -515,6 +697,10 @@ public partial class MainWindow : Window
 
     private void MaybeTriggerComputer()
     {
+        // Replaying a record fires the same events as real play; don't let the
+        // computer answer the moves as they stream past.
+        if (_loadingGame) return;
+
         // Reviewing pauses the game, so a computer move is never played
         // underneath the position being examined.
         if (_reviewMoveCount is null && _game.IsComputerTurn && _game.State == GameState.Playing)
@@ -572,6 +758,9 @@ public partial class MainWindow : Window
                     var result = _game.PlayStone(p.Row, p.Col);
                     if (result.Success)
                     {
+                        if (result.CapturedCount > 0) SoundService.PlayCapture();
+                        else SoundService.PlayStone();
+
                         RefreshStatus(result.CapturedCount > 0
                             ? $"Computer ({color.DisplayName()}) played {GoMoveFormatter.ToNotation(p, size)} and captured {result.CapturedCount} stone(s)."
                             : $"Computer ({color.DisplayName()}) played {GoMoveFormatter.ToNotation(p, size)}.");

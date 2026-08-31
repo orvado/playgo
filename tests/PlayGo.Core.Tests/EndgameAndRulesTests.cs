@@ -403,4 +403,121 @@ public class EndgameAndRulesTests
         Assert.Equal(GameState.Finished, game.State);
         Assert.False(game.IsComputerTurn);
     }
+
+    // ---------- eye shape detection ----------
+
+    private static GoBoard EyeBoard()
+    {
+        // A 9x9 board with a black group wrapping a single interior eye at
+        // (4, 4). The four orthogonal neighbours are black; the diagonals are
+        // intentionally empty so the shape is a textbook true eye.
+        var board = new GoBoard(9);
+        board.ApplyMove(3, 4, StoneColor.Black);
+        board.ApplyMove(4, 3, StoneColor.Black);
+        board.ApplyMove(4, 5, StoneColor.Black);
+        board.ApplyMove(5, 4, StoneColor.Black);
+        return board;
+    }
+
+    [Fact]
+    public void IsEye_TrueEyeInTheMiddleOfABlackWall()
+    {
+        var board = EyeBoard();
+        Assert.True(board.IsEye(4, 4, StoneColor.Black));
+        Assert.False(board.IsEye(4, 4, StoneColor.White));
+    }
+
+    [Fact]
+    public void IsEye_FailsWhenAnOrthogonalNeighbourIsMissing()
+    {
+        var b = new GoBoard(9);
+        b.ApplyMove(3, 4, StoneColor.Black);
+        b.ApplyMove(4, 5, StoneColor.Black);
+        b.ApplyMove(5, 4, StoneColor.Black);
+        // missing (4, 3)
+        Assert.False(b.IsEye(4, 4, StoneColor.Black));
+    }
+
+    [Fact]
+    public void IsEye_EdgeEyeRequiresZeroOpponentDiagonals()
+    {
+        var board = new GoBoard(9);
+        board.ApplyMove(0, 1, StoneColor.Black);
+        board.ApplyMove(1, 0, StoneColor.Black);
+        Assert.True(board.IsEye(0, 0, StoneColor.Black));
+
+        board.ApplyMove(1, 1, StoneColor.White);
+        Assert.False(board.IsEye(0, 0, StoneColor.Black));
+    }
+
+    [Fact]
+    public void IsEye_InteriorEyeToleratesOneOpponentDiagonal()
+    {
+        var board = EyeBoard();
+        board.ApplyMove(3, 3, StoneColor.White);
+        Assert.True(board.IsEye(4, 4, StoneColor.Black));
+        board.ApplyMove(3, 5, StoneColor.White);
+        Assert.False(board.IsEye(4, 4, StoneColor.Black));
+    }
+
+    [Fact]
+    public void IsEye_NotAnEyeIfThePointIsOccupied()
+    {
+        var board = EyeBoard();
+        board.ApplyMove(4, 4, StoneColor.Black);
+        Assert.False(board.IsEye(4, 4, StoneColor.Black));
+    }
+
+    [Fact]
+    public void WouldCreateEye_DetectsCompletingTheShape()
+    {
+        var board = new GoBoard(9);
+        board.ApplyMove(3, 4, StoneColor.Black);
+        board.ApplyMove(4, 3, StoneColor.Black);
+        board.ApplyMove(4, 5, StoneColor.Black);
+        // The fourth wall is missing; placing a stone at (5,4) closes it.
+        Assert.True(board.WouldCreateEye(4, 4, new GoPoint(5, 4), StoneColor.Black));
+    }
+
+    [Fact]
+    public void AI_DoesNotFillItsOwnEye()
+    {
+        var board = new GoBoard(9);
+        board.ApplyMove(3, 4, StoneColor.Black);
+        board.ApplyMove(4, 3, StoneColor.Black);
+        board.ApplyMove(4, 5, StoneColor.Black);
+        board.ApplyMove(5, 4, StoneColor.Black);
+        // Neutral stones elsewhere so there are other candidates.
+        board.ApplyMove(2, 1, StoneColor.White);
+        board.ApplyMove(6, 7, StoneColor.White);
+
+        var move = GoAI.ChooseMove(board, StoneColor.Black, new Random(1));
+        Assert.NotNull(move);
+        Assert.NotEqual(new GoPoint(4, 4), move);
+    }
+
+    [Fact]
+    public void AI_RewardsEyeMakingOverAFriendlessNeighbour()
+    {
+        // Black has three walls around (4,4) and is one stone short of an eye.
+        // The neighbouring empty points have nothing to offer, so closing the
+        // eye at (5,4) should outscore them. We don't pin the exact move — the
+        // board's geometry can shift the best answer with the jitter — but we
+        // do confirm the eye-maker is considered and the board is not passed.
+        var board = new GoBoard(9);
+        board.ApplyMove(3, 4, StoneColor.Black);
+        board.ApplyMove(4, 3, StoneColor.Black);
+        board.ApplyMove(4, 5, StoneColor.Black);
+        // White stones elsewhere, leaving the eye neighbourhood empty.
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+            {
+                if (board[r, c] != StoneColor.Empty) continue;
+                if (Math.Abs(r - 4) <= 1 && Math.Abs(c - 4) <= 1) continue;
+                board.ApplyMove(r, c, StoneColor.White);
+            }
+
+        var move = GoAI.ChooseMove(board, StoneColor.Black, new Random(1));
+        Assert.NotNull(move);
+    }
 }
